@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application d'Inscription</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <h1>Application d'Inscription</h1>
+
+
+    <form id="formulaire">
+
+        <!-- Sert à mémoriser l'inscription en modification -->
+        <input type="hidden" id="idInscription">
+
+
+        <label>Nom :</label><br>
+        <input type="text" id="nom" required><br><br>
+
+
+        <label>Prénom :</label><br>
+        <input type="text" id="prenom" required><br><br>
+
+
+        <label>Date de naissance :</label><br>
+        <input type="date" id="dateNaissance" required><br><br>
+
+
+        <label>Sexe :</label><br>
+
+        <select id="sexe">
+            <option>Homme</option>
+            <option>Femme</option>
+        </select>
+
+        <br><br>
+
+
+        <label>Adresse :</label><br>
+        <input type="text" id="adresse"><br><br>
+
+
+        <label>Téléphone :</label><br>
+        <input type="tel" id="telephone"><br><br>
+
+
+        <label>Courriel :</label><br>
+        <input type="email" id="courriel"><br><br>
+
+
+        <button type="submit" id="boutonEnregistrer">
+            Enregistrer
+        </button>
+
+
+    </form>
+
+
+    <hr>
+
+
+    <h2>Liste des inscriptions</h2>
+
+
+    <table id="tableInscriptions">
+
+        <thead>
+
+            <tr>
+                <th>ID</th>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Sexe</th>
+                <th>Téléphone</th>
+                <th>Courriel</th>
+                <th>Actions</th>
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+        </tbody>
+
+
+    </table>
+
+
+    <script src="script.js"></script>
+
+
+</body>
+
+</html>

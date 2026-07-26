@@ -1,1 +1,12 @@
+# Variables sensibles
 .env
+
+# Modules Node.js
+node_modules/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Fichiers temporaires
+*.log
