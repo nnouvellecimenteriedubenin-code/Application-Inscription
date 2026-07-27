@@ -1,13 +1,13 @@
 {
   "name": "application-inscription",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "description": "Application d'inscription avec PostgreSQL",
+  "main": "backend/server.js",
+  "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js",
+    "test": "echo \"Aucun test\""
   },
   "repository": {
     "type": "git",
@@ -16,7 +16,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/nnouvellecimenteriedubenin-code/Application-Inscription/issues"
   },
@@ -26,8 +25,4 @@
     "express": "^5.2.1",
     "pg": "^8.22.0"
   }
-}
-"scripts": {
-  "start": "node backend/server.js",
-  "dev": "node backend/server.js"
 }
