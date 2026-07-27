@@ -76,10 +76,10 @@ pool.query("SELECT NOW()")
     console.log("✅ Connexion à PostgreSQL réussie !");
     console.log(result.rows[0]);
   })
-  .catch((error) => {
-    console.error("❌ Erreur PostgreSQL :");
-    console.error(error.message);
-  });
+ .catch((error) => {
+  console.error("❌ ERREUR COMPLETE");
+  console.dir(error, { depth: null });
+});
 
 // Route d'accueil
 app.get("/", (req, res) => {
