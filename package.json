@@ -4,9 +4,13 @@
   "description": "Application d'inscription avec PostgreSQL",
   "main": "backend/server.js",
   "type": "commonjs",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node backend/server.js",
+    "bootstrap:admin": "node backend/bootstrap-admin.js",
     "test": "echo \"Aucun test\""
   },
   "repository": {
@@ -21,8 +25,16 @@
   },
   "homepage": "https://github.com/nnouvellecimenteriedubenin-code/Application-Inscription#readme",
   "dependencies": {
+    "bcrypt": "^6.0.0",
+    "connect-pg-simple": "^10.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "pg": "^8.22.0"
+    "express-rate-limit": "^8.7.0",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "ioredis": "6.0.0",
+    "pg": "^8.22.0",
+    "rate-limit-redis": "6.0.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

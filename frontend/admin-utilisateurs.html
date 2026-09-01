@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des utilisateurs</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Gestion des utilisateurs</h1>
+
+    <p class="admin-link"><a href="/">Retour à l'application</a></p>
+
+    <div class="filtres-admin">
+        <label for="filtreStatut">Filtrer par statut</label>
+        <select id="filtreStatut">
+            <option value="tous">Tous</option>
+            <option value="en_attente">En attente</option>
+            <option value="actif">Actifs</option>
+            <option value="refusé">Refusés</option>
+            <option value="désactivé">Désactivés</option>
+        </select>
+    </div>
+
+    <p id="messageAdmin" class="message-admin">Chargement des utilisateurs...</p>
+
+    <table class="tableau-admin">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Identifiant</th>
+                <th>Email</th>
+                <th>Téléphone</th>
+                <th>Rôle</th>
+                <th>Statut</th>
+                <th>Date de création</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="corpsUtilisateurs"></tbody>
+    </table>
+
+    <script src="admin-utilisateurs.js"></script>
+</body>
+</html>

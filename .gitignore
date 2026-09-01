@@ -1,5 +1,7 @@
 # Variables sensibles
 .env
+.env.*
+!.env.example
 
 # Modules Node.js
 node_modules/
@@ -8,5 +10,17 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Configuration locale des éditeurs
+.vscode/
+
 # Fichiers temporaires
 *.log
+tmp-*.js
+test-export-xlsx.js
+validate-visitor.js
+test-results/
+coverage/
+*.test-result.*
+
+# Exports contenant des données personnelles
+inscriptions-export-*.xlsx
