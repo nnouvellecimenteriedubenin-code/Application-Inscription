@@ -22,54 +22,18 @@ const EST_PRODUCTION = ENVIRONNEMENT === "production";
 const DUREE_SESSION_MS = 8 * 60 * 60 * 1000;
 const LONGUEUR_MINIMALE_SECRET_SESSION = 32;
 
-function obtenirProxysConfiance() {
-
-    if (!EST_PRODUCTION) {
-        return [];
-    }
-
-    const configuration = String(process.env.TRUST_PROXY || "").trim();
-
-    if (!configuration) {
-        return [];
-    }
-
-    const proxys = configuration
-        .split(",")
-        .map((valeur) => valeur.trim())
-        .filter(Boolean);
-    const valeursInterdites = new Set([
-        "true",
-        "false",
-        "loopback",
-        "linklocal",
-        "uniquelocal",
-        "0.0.0.0/0",
-        "::/0"
-    ]);
-
-    if (proxys.some((valeur) => valeursInterdites.has(valeur.toLowerCase())
-        || /^\d+$/.test(valeur))) {
-        throw new Error(
-            "Configuration invalide : TRUST_PROXY doit contenir uniquement les IP ou CIDR explicitement documentés par l'hébergeur."
-        );
-    }
-
-    return proxys;
-}
-
-const PROXYS_CONFIANCE = obtenirProxysConfiance();
-
 app.set("env", ENVIRONNEMENT);
 
-if (EST_PRODUCTION && PROXYS_CONFIANCE.length > 0) {
-    try {
-        app.set("trust proxy", PROXYS_CONFIANCE);
-    } catch (error) {
-        throw new Error(
-            "Configuration invalide : TRUST_PROXY contient une IP ou un CIDR incorrect."
-        );
+function requeteHttpsRender(req) {
+
+    if (!EST_PRODUCTION) {
+        return req.secure;
     }
+
+    const protocoleTransmis = req.get("x-forwarded-proto");
+
+    return typeof protocoleTransmis === "string"
+        && protocoleTransmis.trim().toLowerCase() === "https";
 }
 
 app.use(helmet({
@@ -107,7 +71,7 @@ app.use(helmet({
 if (EST_PRODUCTION) {
     app.use((req, res, next) => {
 
-        if (req.secure) {
+        if (requeteHttpsRender(req)) {
             return next();
         }
 
@@ -164,12 +128,6 @@ function verifierConfiguration() {
     if (EST_PRODUCTION && longueurSecretSession < LONGUEUR_MINIMALE_SECRET_SESSION) {
         throw new Error(
             `Configuration invalide : SESSION_SECRET doit contenir au moins ${LONGUEUR_MINIMALE_SECRET_SESSION} octets aléatoires en production.`
-        );
-    }
-
-    if (EST_PRODUCTION && PROXYS_CONFIANCE.length === 0) {
-        throw new Error(
-            "Configuration manquante : TRUST_PROXY doit contenir les IP ou CIDR documentés du proxy HTTPS."
         );
     }
 
@@ -235,6 +193,7 @@ app.use(session({
     name: "application_inscription.sid",
     store: stockageSessions,
     secret: process.env.SESSION_SECRET,
+    proxy: EST_PRODUCTION,
     resave: false,
     saveUninitialized: false,
     unset: "destroy",
@@ -280,7 +239,8 @@ function origineRequeteAutorisee(req) {
 
     try {
         const urlSource = new URL(source);
-        const origineAttendue = `${req.protocol}://${req.get("host")}`;
+        const protocolePublic = EST_PRODUCTION ? "https" : req.protocol;
+        const origineAttendue = `${protocolePublic}://${req.get("host")}`;
         return urlSource.origin === origineAttendue;
     } catch (error) {
         return false;
