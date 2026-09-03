@@ -11,15 +11,21 @@
 
 <body>
 
-    <h1>Application d'Inscription</h1>
+    <header class="entete-principal">
+        <h1>Application d'Inscription</h1>
+        <a id="lienFormulaire" href="/" aria-current="page">Formulaire d'inscription</a>
+        <p id="messageSession" class="message-session">Veuillez vous connecter pour utiliser l'application.</p>
+    </header>
 
-    <div id="navigationApp" class="navigation-app">
-        <a id="lienFormulaire" href="/">Formulaire d'inscription</a>
-        <a id="lienInscriptions" href="#listeInscriptions" style="display:none">Liste des inscriptions</a>
-        <a id="lienAdmin" href="/admin-utilisateurs" style="display:none">Gestion des utilisateurs</a>
-    </div>
-
-    <p id="messageSession" class="message-session">Veuillez vous connecter pour utiliser l'application.</p>
+    <nav id="navigationApp" class="navigation-app" aria-label="Navigation principale">
+        <div class="navigation-liens">
+            <a id="lienInscriptions" href="#listeInscriptions" style="display:none">Liste des inscriptions</a>
+            <a id="lienAdmin" href="/admin-utilisateurs" style="display:none">Gestion des utilisateurs</a>
+        </div>
+        <div class="navigation-compte">
+            <button id="boutonDeconnexion" class="bouton-deconnexion" type="button" hidden>Déconnexion</button>
+        </div>
+    </nav>
 
     <form id="formulaire" style="display:none">
 

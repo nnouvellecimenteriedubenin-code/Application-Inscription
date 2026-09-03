@@ -19,7 +19,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ENVIRONNEMENT = process.env.NODE_ENV || "development";
 const EST_PRODUCTION = ENVIRONNEMENT === "production";
-const DUREE_SESSION_MS = 8 * 60 * 60 * 1000;
+const DUREE_SESSION_MS = 10 * 60 * 1000;
 const LONGUEUR_MINIMALE_SECRET_SESSION = 32;
 
 app.set("env", ENVIRONNEMENT);
@@ -81,10 +81,25 @@ if (EST_PRODUCTION) {
     });
 }
 
+const DOSSIER_FRONTEND = path.join(__dirname, "../frontend");
+
+function servirPagePublique(nomFichier) {
+    return (req, res) => {
+        res.sendFile(path.join(DOSSIER_FRONTEND, nomFichier));
+    };
+}
+
+app.get(["/login", "/login.html"], servirPagePublique("login.html"));
+app.get(["/register", "/register.html"], servirPagePublique("register.html"));
+app.get("/login.js", servirPagePublique("login.js"));
+app.get("/register.js", servirPagePublique("register.js"));
+app.get("/style.css", servirPagePublique("style.css"));
+
 const stockageSessions = new PostgreSqlSessionStore({
     pool,
     tableName: "sessions_application",
     createTableIfMissing: false,
+    ttl: DUREE_SESSION_MS / 1000,
     pruneSessionInterval: 15 * 60
 });
 
@@ -195,6 +210,7 @@ app.use(session({
     secret: process.env.SESSION_SECRET,
     proxy: EST_PRODUCTION,
     resave: false,
+    rolling: true,
     saveUninitialized: false,
     unset: "destroy",
     cookie: {
@@ -253,6 +269,16 @@ function protegerCsrf(req, res, next) {
         return next();
     }
 
+    const mutationAnonymeAutorisee = req.method === "POST"
+        && ["/login", "/register"].includes(req.path);
+
+    if (!mutationAnonymeAutorisee
+        && (!req.session || !req.session.userId)) {
+        return res.status(401).json({
+            message: "Authentification requise."
+        });
+    }
+
     const jetonRecu = req.get("x-csrf-token");
     const jetonSession = req.session && req.session.csrfToken;
 
@@ -265,7 +291,7 @@ function protegerCsrf(req, res, next) {
     return next();
 }
 
-function obtenirCleClientLimiteurCsrf(req) {
+function obtenirCleClientLimiteur(req) {
 
     if (!EST_PRODUCTION) {
         return ipKeyGenerator(req.ip);
@@ -291,7 +317,7 @@ function creerLimiteurCreationSessionCsrf() {
         legacyHeaders: false,
         identifier: "csrf-session-creation",
         passOnStoreError: false,
-        keyGenerator: obtenirCleClientLimiteurCsrf,
+        keyGenerator: obtenirCleClientLimiteur,
         skip: (req) => Boolean(req.session && req.session.csrfToken),
         message: {
             message: "Trop de créations de session. Réessayez dans 15 minutes."
@@ -353,6 +379,7 @@ const limiteurConnexion = rateLimit({
     limit: 5,
     standardHeaders: "draft-8",
     legacyHeaders: false,
+    keyGenerator: obtenirCleClientLimiteur,
     skipSuccessfulRequests: true,
     message: {
         message: "Trop de tentatives de connexion. Réessayez dans 15 minutes."
@@ -364,22 +391,10 @@ const limiteurInscription = rateLimit({
     limit: 5,
     standardHeaders: "draft-8",
     legacyHeaders: false,
+    keyGenerator: obtenirCleClientLimiteur,
     message: {
         message: "Trop de demandes d'inscription. Réessayez plus tard."
     }
-});
-
-// Pages et routes d'authentification
-app.get("/login", (req, res) => {
-
-    res.sendFile(path.join(__dirname, "../frontend/login.html"));
-
-});
-
-app.get("/register", (req, res) => {
-
-    res.sendFile(path.join(__dirname, "../frontend/register.html"));
-
 });
 
 async function verifierUtilisateurSession(req) {
@@ -424,6 +439,23 @@ function detruireSession(req) {
     });
 }
 
+async function verifierSessionActive(req) {
+
+    if (!req.session || !req.session.userId) {
+        return null;
+    }
+
+    const utilisateur = await verifierUtilisateurSession(req);
+
+    if (utilisateur && utilisateur.statut === "actif") {
+        return utilisateur;
+    }
+
+    await detruireSession(req);
+    return null;
+
+}
+
 function regenererSessionUtilisateur(req, utilisateur) {
 
     return new Promise((resolve, reject) => {
@@ -458,9 +490,9 @@ async function protegerCompteActif(req, res, next) {
 
     try {
 
-        const utilisateur = await verifierUtilisateurSession(req);
+        const utilisateur = await verifierSessionActive(req);
 
-        if (utilisateur && utilisateur.statut === "actif") {
+        if (utilisateur) {
             return next();
         }
 
@@ -474,12 +506,8 @@ async function protegerCompteActif(req, res, next) {
 
     }
 
-    if (req.accepts("html")) {
-        return res.status(403).send("Accès refusé.");
-    }
-
-    return res.status(403).json({
-        message: "Accès refusé."
+    return res.status(401).json({
+        message: "Authentification requise."
     });
 
 }
@@ -488,9 +516,15 @@ async function protegerAdmin(req, res, next) {
 
     try {
 
-        const utilisateur = await verifierUtilisateurSession(req);
+        const utilisateur = await verifierSessionActive(req);
 
-        if (utilisateur && utilisateur.role === "administrateur" && utilisateur.statut === "actif") {
+        if (!utilisateur) {
+            return res.status(401).json({
+                message: "Authentification requise."
+            });
+        }
+
+        if (utilisateur.role === "administrateur") {
             return next();
         }
 
@@ -504,23 +538,45 @@ async function protegerAdmin(req, res, next) {
 
     }
 
-    if (req.accepts("html")) {
-        return res.status(403).send("Accès refusé.");
-    }
-
     return res.status(403).json({
         message: "Accès refusé."
     });
 
 }
 
-app.get("/admin-utilisateurs", protegerAdmin, (req, res) => {
+async function protegerPageAdmin(req, res, next) {
+
+    try {
+
+        const utilisateur = await verifierSessionActive(req);
+
+        if (!utilisateur) {
+            return res.redirect("/login");
+        }
+
+        if (utilisateur.role === "administrateur") {
+            return next();
+        }
+
+        return res.status(403).send("Accès refusé.");
+
+    } catch (error) {
+
+        console.error(error);
+
+        return res.status(500).send("Erreur serveur");
+
+    }
+
+}
+
+app.get("/admin-utilisateurs", protegerPageAdmin, (req, res) => {
 
     res.sendFile(path.join(__dirname, "../frontend/admin-utilisateurs.html"));
 
 });
 
-app.get("/admin-utilisateurs.html", protegerAdmin, (req, res) => {
+app.get("/admin-utilisateurs.html", protegerPageAdmin, (req, res) => {
 
     res.sendFile(path.join(__dirname, "../frontend/admin-utilisateurs.html"));
 
@@ -559,6 +615,76 @@ function laisseraitSansAdministrateurActif(utilisateur, statutCible, nombreAdmin
 
 }
 
+function transitionStatutAutorisee(statutActuel, statutCible) {
+
+    return (statutActuel === "en_attente" && statutCible === "actif")
+        || (statutActuel === "actif" && statutCible === "désactivé")
+        || (statutActuel === "désactivé" && statutCible === "actif");
+
+}
+
+function journaliserGestionUtilisateur(req, action, cibleId, resultat) {
+
+    const acteurId = req.session && Number.isSafeInteger(Number(req.session.userId))
+        ? Number(req.session.userId)
+        : "inconnu";
+
+    console.info(
+        `[AUDIT_GESTION_UTILISATEURS] acteur=${acteurId} cible=${cibleId} action=${action} resultat=${resultat}`
+    );
+
+}
+
+async function compterAdministrateursActifs(client) {
+
+    const resultat = await client.query(
+        `SELECT COUNT(*)::integer AS total
+         FROM utilisateurs
+         WHERE role=$1 AND statut=$2`,
+        ["administrateur", "actif"]
+    );
+
+    return resultat.rows[0].total;
+}
+
+async function administrateurReellementActifDansTransaction(client, req) {
+
+    const acteurId = Number(req.session && req.session.userId);
+
+    if (!Number.isSafeInteger(acteurId) || acteurId <= 0) {
+        return false;
+    }
+
+    const resultat = await client.query(
+        `SELECT id
+         FROM utilisateurs
+         WHERE id=$1 AND role=$2 AND statut=$3`,
+        [acteurId, "administrateur", "actif"]
+    );
+
+    return resultat.rowCount === 1;
+}
+
+async function supprimerSessionsUtilisateur(client, utilisateurId) {
+
+    await client.query(
+        `DELETE FROM sessions_application
+         WHERE sess->>'userId'=$1`,
+        [String(utilisateurId)]
+    );
+
+}
+
+function invaliderSessionCouranteSiCible(req, utilisateurId) {
+
+    if (req.session && Number(req.session.userId) === utilisateurId) {
+        req.session = null;
+        return true;
+    }
+
+    return false;
+}
+
 app.patch("/api/admin/utilisateurs/:id/statut", protegerAdmin, async (req, res) => {
 
     const id = validerIdentifiantPositif(req.params.id);
@@ -572,6 +698,7 @@ app.patch("/api/admin/utilisateurs/:id/statut", protegerAdmin, async (req, res) 
     const validationStatut = validerChangementStatut(req.body);
 
     if (validationStatut.erreur) {
+        journaliserGestionUtilisateur(req, "modifier_statut", id, "refuse_validation");
         return res.status(400).json({
             message: validationStatut.erreur
         });
@@ -592,10 +719,21 @@ app.patch("/api/admin/utilisateurs/:id/statut", protegerAdmin, async (req, res) 
         // concurrentes ne puissent pas désactiver les derniers administrateurs.
         await client.query("LOCK TABLE utilisateurs IN SHARE ROW EXCLUSIVE MODE");
 
+        if (!await administrateurReellementActifDansTransaction(client, req)) {
+            await client.query("ROLLBACK");
+            transactionOuverte = false;
+            journaliserGestionUtilisateur(req, "modifier_statut", id, "refuse_autorisation");
+
+            return res.status(403).json({
+                message: "Accès refusé."
+            });
+        }
+
         const resultatUtilisateur = await client.query(
             `SELECT id, nom, prenom, identifiant, email, telephone, role, statut, cree_le
              FROM utilisateurs
-             WHERE id=$1`,
+             WHERE id=$1
+             FOR UPDATE`,
             [id]
         );
 
@@ -611,17 +749,21 @@ app.patch("/api/admin/utilisateurs/:id/statut", protegerAdmin, async (req, res) 
         const utilisateur = resultatUtilisateur.rows[0];
         let nombreAdministrateursActifs = 0;
 
+        if (!transitionStatutAutorisee(utilisateur.statut, statut)) {
+            await client.query("ROLLBACK");
+            transactionOuverte = false;
+            journaliserGestionUtilisateur(req, "modifier_statut", id, "refuse_transition");
+
+            return res.status(409).json({
+                message: "Cette transition de statut n'est pas autorisée."
+            });
+        }
+
         if (utilisateur.role === "administrateur"
             && utilisateur.statut === "actif"
             && statut !== "actif") {
 
-            const resultatAdministrateursActifs = await client.query(
-                `SELECT COUNT(*)::integer AS total
-                 FROM utilisateurs
-                 WHERE role='administrateur' AND statut='actif'`
-            );
-
-            nombreAdministrateursActifs = resultatAdministrateursActifs.rows[0].total;
+            nombreAdministrateursActifs = await compterAdministrateursActifs(client);
         }
 
         if (laisseraitSansAdministrateurActif(
@@ -632,8 +774,10 @@ app.patch("/api/admin/utilisateurs/:id/statut", protegerAdmin, async (req, res) 
             await client.query("ROLLBACK");
             transactionOuverte = false;
 
+            journaliserGestionUtilisateur(req, "modifier_statut", id, "refuse_dernier_admin");
+
             return res.status(409).json({
-                message: "Impossible de désactiver ou refuser le dernier administrateur actif."
+                message: "Impossible de modifier le statut du dernier administrateur actif."
             });
         }
 
@@ -645,12 +789,21 @@ app.patch("/api/admin/utilisateurs/:id/statut", protegerAdmin, async (req, res) 
             [statut, id]
         );
 
+        if (statut === "désactivé") {
+            await supprimerSessionsUtilisateur(client, id);
+        }
+
         await client.query("COMMIT");
         transactionOuverte = false;
 
+        journaliserGestionUtilisateur(req, "modifier_statut", id, "reussi");
+        const sessionInvalidee = statut !== "actif"
+            && invaliderSessionCouranteSiCible(req, id);
+
         res.json({
             message: "Statut mis à jour",
-            utilisateur: resultat.rows[0]
+            utilisateur: resultat.rows[0],
+            sessionInvalidee
         });
 
     } catch (error) {
@@ -679,8 +832,259 @@ app.patch("/api/admin/utilisateurs/:id/statut", protegerAdmin, async (req, res) 
 
 });
 
+app.patch("/api/admin/utilisateurs/:id/role", protegerAdmin, async (req, res) => {
+
+    const id = validerIdentifiantPositif(req.params.id);
+
+    if (id === null) {
+        return res.status(400).json({
+            message: "L'identifiant utilisateur doit être un entier positif."
+        });
+    }
+
+    const validationRole = validerChangementRole(req.body);
+
+    if (validationRole.erreur) {
+        journaliserGestionUtilisateur(req, "modifier_role", id, "refuse_validation");
+        return res.status(400).json({
+            message: validationRole.erreur
+        });
+    }
+
+    const role = validationRole.valeur;
+    let client;
+    let transactionOuverte = false;
+
+    try {
+
+        client = await pool.connect();
+        await client.query("BEGIN");
+        transactionOuverte = true;
+        await client.query("LOCK TABLE utilisateurs IN SHARE ROW EXCLUSIVE MODE");
+
+        if (!await administrateurReellementActifDansTransaction(client, req)) {
+            await client.query("ROLLBACK");
+            transactionOuverte = false;
+            journaliserGestionUtilisateur(req, "modifier_role", id, "refuse_autorisation");
+
+            return res.status(403).json({
+                message: "Accès refusé."
+            });
+        }
+
+        const resultatUtilisateur = await client.query(
+            `SELECT id, nom, prenom, identifiant, email, telephone, role, statut, cree_le
+             FROM utilisateurs
+             WHERE id=$1
+             FOR UPDATE`,
+            [id]
+        );
+
+        if (resultatUtilisateur.rows.length === 0) {
+            await client.query("ROLLBACK");
+            transactionOuverte = false;
+            journaliserGestionUtilisateur(req, "modifier_role", id, "refuse_introuvable");
+
+            return res.status(404).json({
+                message: "Utilisateur introuvable"
+            });
+        }
+
+        const utilisateur = resultatUtilisateur.rows[0];
+
+        if (utilisateur.role === "administrateur"
+            && utilisateur.statut === "actif"
+            && role !== "administrateur") {
+
+            const nombreAdministrateursActifs = await compterAdministrateursActifs(client);
+
+            if (nombreAdministrateursActifs <= 1) {
+                await client.query("ROLLBACK");
+                transactionOuverte = false;
+                journaliserGestionUtilisateur(req, "modifier_role", id, "refuse_dernier_admin");
+
+                return res.status(409).json({
+                    message: "Impossible de rétrograder le dernier administrateur actif."
+                });
+            }
+        }
+
+        const resultat = await client.query(
+            `UPDATE utilisateurs
+             SET role=$1
+             WHERE id=$2
+             RETURNING id, nom, prenom, identifiant, email, telephone, role, statut, cree_le`,
+            [role, id]
+        );
+
+        const changementRole = utilisateur.role !== role;
+
+        if (changementRole) {
+            await supprimerSessionsUtilisateur(client, id);
+        }
+
+        await client.query("COMMIT");
+        transactionOuverte = false;
+
+        journaliserGestionUtilisateur(req, "modifier_role", id, "reussi");
+        const sessionInvalidee = changementRole
+            && invaliderSessionCouranteSiCible(req, id);
+
+        return res.json({
+            message: "Rôle mis à jour",
+            utilisateur: resultat.rows[0],
+            sessionInvalidee
+        });
+
+    } catch (error) {
+
+        if (client && transactionOuverte) {
+            try {
+                await client.query("ROLLBACK");
+            } catch {
+                // Le détail PostgreSQL ne doit pas être exposé.
+            }
+        }
+
+        journaliserGestionUtilisateur(req, "modifier_role", id, "echec_interne");
+
+        return res.status(500).json({
+            message: "Erreur serveur"
+        });
+
+    } finally {
+
+        if (client) {
+            client.release();
+        }
+
+    }
+
+});
+
+app.delete("/api/admin/utilisateurs/:id", protegerAdmin, async (req, res) => {
+
+    const id = validerIdentifiantPositif(req.params.id);
+
+    if (id === null) {
+        return res.status(400).json({
+            message: "L'identifiant utilisateur doit être un entier positif."
+        });
+    }
+
+    let client;
+    let transactionOuverte = false;
+
+    try {
+
+        client = await pool.connect();
+        await client.query("BEGIN");
+        transactionOuverte = true;
+        await client.query("LOCK TABLE utilisateurs IN SHARE ROW EXCLUSIVE MODE");
+
+        if (!await administrateurReellementActifDansTransaction(client, req)) {
+            await client.query("ROLLBACK");
+            transactionOuverte = false;
+            journaliserGestionUtilisateur(req, "supprimer", id, "refuse_autorisation");
+
+            return res.status(403).json({
+                message: "Accès refusé."
+            });
+        }
+
+        const resultatUtilisateur = await client.query(
+            `SELECT id, role, statut
+             FROM utilisateurs
+             WHERE id=$1
+             FOR UPDATE`,
+            [id]
+        );
+
+        if (resultatUtilisateur.rows.length === 0) {
+            await client.query("ROLLBACK");
+            transactionOuverte = false;
+            journaliserGestionUtilisateur(req, "supprimer", id, "refuse_introuvable");
+
+            return res.status(404).json({
+                message: "Utilisateur introuvable"
+            });
+        }
+
+        const utilisateur = resultatUtilisateur.rows[0];
+
+        if (utilisateur.role === "administrateur" && utilisateur.statut === "actif") {
+            const nombreAdministrateursActifs = await compterAdministrateursActifs(client);
+
+            if (nombreAdministrateursActifs <= 1) {
+                await client.query("ROLLBACK");
+                transactionOuverte = false;
+                journaliserGestionUtilisateur(req, "supprimer", id, "refuse_dernier_admin");
+
+                return res.status(409).json({
+                    message: "Impossible de supprimer le dernier administrateur actif."
+                });
+            }
+        }
+
+        await supprimerSessionsUtilisateur(client, id);
+
+        const suppression = await client.query(
+            "DELETE FROM utilisateurs WHERE id=$1 RETURNING id",
+            [id]
+        );
+
+        if (suppression.rowCount !== 1) {
+            throw new Error("Suppression utilisateur non confirmée");
+        }
+
+        await client.query("COMMIT");
+        transactionOuverte = false;
+        journaliserGestionUtilisateur(req, "supprimer", id, "reussi");
+        const sessionInvalidee = invaliderSessionCouranteSiCible(req, id);
+
+        return res.json({
+            message: "Utilisateur supprimé",
+            sessionInvalidee
+        });
+
+    } catch (error) {
+
+        if (client && transactionOuverte) {
+            try {
+                await client.query("ROLLBACK");
+            } catch {
+                // Le détail PostgreSQL ne doit pas être exposé.
+            }
+        }
+
+        journaliserGestionUtilisateur(req, "supprimer", id, "echec_interne");
+
+        if (error && error.code === "23503") {
+            return res.status(409).json({
+                message: "Cet utilisateur ne peut pas être supprimé car il est encore référencé."
+            });
+        }
+
+        return res.status(500).json({
+            message: "Erreur serveur"
+        });
+
+    } finally {
+
+        if (client) {
+            client.release();
+        }
+
+    }
+
+});
+
 // Accueil
 async function servirApplicationPrivee(req, res) {
+
+    if (!req.session || !req.session.userId) {
+        return res.redirect("/login");
+    }
 
     let utilisateur;
 
@@ -735,7 +1139,8 @@ pool.query("SELECT NOW()")
 });
 
 // Validation
-const STATUTS_AUTORISES = new Set(["actif", "en_attente", "refusé", "désactivé"]);
+const STATUTS_GESTION_ADMIN_AUTORISES = new Set(["actif", "désactivé"]);
+const ROLES_AUTORISES = new Set(["utilisateur", "administrateur"]);
 const SEXES_AUTORISES = new Set(["Homme", "Femme"]);
 const REGLE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REGLE_IDENTIFIANT = /^[\p{L}\p{N}._@-]+$/u;
@@ -1092,7 +1497,7 @@ function validerChangementStatut(donnees) {
         };
     }
 
-    if (!STATUTS_AUTORISES.has(donnees.statut)) {
+    if (!STATUTS_GESTION_ADMIN_AUTORISES.has(donnees.statut)) {
         return {
             erreur: "Statut invalide."
         };
@@ -1100,6 +1505,35 @@ function validerChangementStatut(donnees) {
 
     return {
         valeur: donnees.statut
+    };
+}
+
+function validerChangementRole(donnees) {
+
+    if (!estObjetRequete(donnees)) {
+        return {
+            erreur: "Le corps de la requête doit être un objet JSON."
+        };
+    }
+
+    const champInattendu = trouverChampInattendu(donnees, ["role"]);
+
+    if (champInattendu || typeof donnees.role !== "string") {
+        return {
+            erreur: champInattendu
+                ? `Champ inattendu : ${champInattendu}.`
+                : "Le rôle est obligatoire."
+        };
+    }
+
+    if (!ROLES_AUTORISES.has(donnees.role)) {
+        return {
+            erreur: "Rôle invalide."
+        };
+    }
+
+    return {
+        valeur: donnees.role
     };
 }
 
@@ -1207,7 +1641,9 @@ app.post("/login", limiteurConnexion, async (req, res) => {
     try {
 
         const resultat = await pool.query(
-            "SELECT * FROM utilisateurs WHERE identifiant=$1",
+            `SELECT id, identifiant, mot_de_passe, role, statut
+             FROM utilisateurs
+             WHERE identifiant=$1`,
             [identifiant]
         );
 
@@ -1281,6 +1717,12 @@ app.post("/logout", (req, res) => {
 });
 
 app.get("/session", async (req, res) => {
+
+    if (!req.session || !req.session.userId) {
+        return res.json({
+            connecte: false
+        });
+    }
 
     let utilisateur;
 

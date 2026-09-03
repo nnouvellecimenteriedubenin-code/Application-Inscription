@@ -11,6 +11,7 @@
     "start": "node backend/server.js",
     "dev": "node backend/server.js",
     "bootstrap:admin": "node backend/bootstrap-admin.js",
+    "admin:rotate-password": "node backend/rotate-admin-password.js",
     "test": "echo \"Aucun test\""
   },
   "repository": {

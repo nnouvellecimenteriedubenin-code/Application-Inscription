@@ -9,6 +9,7 @@ const lienInscriptions = document.getElementById("lienInscriptions");
 const lienAdmin = document.getElementById("lienAdmin");
 const messageSession = document.getElementById("messageSession");
 const boutonExporterExcel = document.getElementById("boutonExporterExcel");
+const boutonDeconnexion = document.getElementById("boutonDeconnexion");
 
 // Adresse de l'API
 const API = "";
@@ -19,6 +20,56 @@ let triActif = {
 };
 let estAdministrateurActif = false;
 let jetonCsrf = null;
+const DUREE_INACTIVITE_SESSION_MS = 10 * 60 * 1000;
+const MARGE_VERIFICATION_SESSION_MS = 2 * 1000;
+let minuteurVerificationSession = null;
+let verificationSessionEnCours = null;
+const canalSession = typeof BroadcastChannel === "function"
+    ? new BroadcastChannel("application-inscription-session")
+    : null;
+
+function redirigerVersConnexion(notifierAutresOnglets = true) {
+    if (minuteurVerificationSession) {
+        clearTimeout(minuteurVerificationSession);
+        minuteurVerificationSession = null;
+    }
+
+    if (notifierAutresOnglets && canalSession) {
+        canalSession.postMessage({ type: "session-terminee" });
+    }
+
+    window.location.replace("/login");
+}
+
+function programmerVerificationSession() {
+    if (minuteurVerificationSession) {
+        clearTimeout(minuteurVerificationSession);
+    }
+
+    minuteurVerificationSession = setTimeout(() => {
+        chargerSession();
+    }, DUREE_INACTIVITE_SESSION_MS + MARGE_VERIFICATION_SESSION_MS);
+}
+
+async function fetchAuthentifie(url, options) {
+    const reponse = await fetch(url, options);
+
+    if (reponse.status === 401) {
+        redirigerVersConnexion();
+        throw new Error("Votre session a expiré.");
+    }
+
+    programmerVerificationSession();
+    return reponse;
+}
+
+if (canalSession) {
+    canalSession.addEventListener("message", (event) => {
+        if (event.data?.type === "session-terminee") {
+            redirigerVersConnexion(false);
+        }
+    });
+}
 
 async function obtenirJetonCsrf() {
 
@@ -242,6 +293,10 @@ async function mettreAJourInterface(session) {
         boutonExporterExcel.style.display = estAdministrateur ? "inline-block" : "none";
     }
 
+    if (boutonDeconnexion) {
+        boutonDeconnexion.hidden = !estConnexe;
+    }
+
     if (messageSession) {
         if (!estConnexe) {
             messageSession.textContent = "Veuillez vous connecter pour utiliser l'application.";
@@ -250,9 +305,7 @@ async function mettreAJourInterface(session) {
             messageSession.textContent = "Votre compte n'est pas actif. Contactez un administrateur.";
             formulaire.style.display = "none";
         } else {
-            messageSession.textContent = estAdministrateur
-                ? "Connecté en tant qu'administrateur actif. Vous avez accès aux inscriptions et à la gestion des utilisateurs."
-                : "Connecté en tant qu'utilisateur actif. Vous pouvez soumettre un formulaire d'inscription.";
+            messageSession.textContent = "Soumetter votre inscription";
             formulaire.style.display = "block";
         }
     }
@@ -269,16 +322,80 @@ async function mettreAJourInterface(session) {
 
 async function chargerSession() {
 
+    if (verificationSessionEnCours) {
+        return verificationSessionEnCours;
+    }
+
+    verificationSessionEnCours = (async () => {
+
+        try {
+
+            const reponse = await fetch(`${API}/session`, {
+                cache: "no-store"
+            });
+
+            if (!reponse.ok) {
+                throw new Error("Impossible de vérifier la session.");
+            }
+
+            const session = await reponse.json();
+
+            if (session.connecte !== true) {
+                redirigerVersConnexion();
+                return;
+            }
+
+            programmerVerificationSession();
+            await mettreAJourInterface(session);
+
+        } catch (erreur) {
+
+            console.error(erreur);
+
+        }
+
+    })();
+
+    try {
+        return await verificationSessionEnCours;
+    } finally {
+        verificationSessionEnCours = null;
+    }
+
+}
+
+async function deconnecter() {
+
+    if (!boutonDeconnexion) {
+        return;
+    }
+
     try {
 
-        const reponse = await fetch(`${API}/session`);
-        const session = await reponse.json();
+        boutonDeconnexion.disabled = true;
+        const csrfToken = await obtenirJetonCsrf();
+        const reponse = await fetchAuthentifie(`${API}/logout`, {
+            method: "POST",
+            headers: {
+                "X-CSRF-Token": csrfToken
+            }
+        });
 
-        await mettreAJourInterface(session);
+        if (!reponse.ok) {
+            throw new Error("Impossible de vous déconnecter.");
+        }
+
+        jetonCsrf = null;
+        redirigerVersConnexion();
 
     } catch (erreur) {
 
         console.error(erreur);
+        boutonDeconnexion.disabled = false;
+
+        if (messageSession) {
+            messageSession.textContent = erreur.message;
+        }
 
     }
 
@@ -289,7 +406,7 @@ async function chargerInscriptions() {
 
     try {
 
-        const reponse = await fetch(`${API}/inscriptions`);
+        const reponse = await fetchAuthentifie(`${API}/inscriptions`);
 
         if (!reponse.ok) {
             throw new Error("Accès refusé");
@@ -313,7 +430,7 @@ async function modifierInscription(id) {
 
     try {
 
-        const reponse = await fetch(`${API}/inscriptions`);
+        const reponse = await fetchAuthentifie(`${API}/inscriptions`);
 
         const inscriptions = await reponse.json();
 
@@ -359,7 +476,7 @@ async function supprimerInscription(id) {
 
         const csrfToken = await obtenirJetonCsrf();
 
-        const reponse = await fetch(`${API}/inscriptions/${id}`, {
+        const reponse = await fetchAuthentifie(`${API}/inscriptions/${id}`, {
 
             method: "DELETE",
             headers: {
@@ -417,7 +534,7 @@ formulaire.addEventListener("submit", async function (event) {
 
         const csrfToken = await obtenirJetonCsrf();
 
-        const reponse = await fetch(url, {
+        const reponse = await fetchAuthentifie(url, {
 
             method: methode,
 
@@ -459,7 +576,7 @@ champRecherche.addEventListener("input", afficherInscriptions);
 if (boutonExporterExcel) {
     boutonExporterExcel.addEventListener("click", async () => {
         try {
-            const reponse = await fetch("/api/inscriptions/export");
+            const reponse = await fetchAuthentifie("/api/inscriptions/export");
 
             if (!reponse.ok) {
                 throw new Error("Impossible d'exporter les inscriptions");
@@ -505,3 +622,16 @@ enTetesTriables.forEach((enTete) => {
 
 // Chargement initial de la session pour définir l'accès
 chargerSession();
+
+if (boutonDeconnexion) {
+    boutonDeconnexion.addEventListener("click", deconnecter);
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+        chargerSession();
+    }
+});
+
+window.addEventListener("focus", chargerSession);
+window.addEventListener("pageshow", chargerSession);

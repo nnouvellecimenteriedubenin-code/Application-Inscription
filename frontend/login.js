@@ -1,22 +1,78 @@
 const formulaireConnexion = document.getElementById("formulaireConnexion");
 const messageConnexion = document.getElementById("messageConnexion");
+const champMotDePasse = document.getElementById("motdepasse");
 const boutonsToggle = document.querySelectorAll(".toggle-mot-de-passe");
 let jetonCsrf = null;
+let promesseJetonCsrf = null;
+
+const ETAT_HISTORIQUE_CONNEXION = "connexion";
+
+function viderChampMotDePasse() {
+    champMotDePasse.value = "";
+    champMotDePasse.type = "password";
+
+    const boutonToggle = document.querySelector('[data-cible="motdepasse"]');
+    if (boutonToggle) {
+        boutonToggle.textContent = "👁";
+        boutonToggle.setAttribute("aria-label", "Afficher le mot de passe");
+    }
+}
+
+function ancrerPageConnexionDansHistorique() {
+    const etatCourant = window.history.state;
+
+    if (!etatCourant || etatCourant.page !== ETAT_HISTORIQUE_CONNEXION) {
+        window.history.replaceState(
+            { page: ETAT_HISTORIQUE_CONNEXION, position: "base" },
+            "",
+            window.location.href
+        );
+        window.history.pushState(
+            { page: ETAT_HISTORIQUE_CONNEXION, position: "garde" },
+            "",
+            window.location.href
+        );
+    }
+}
+
+viderChampMotDePasse();
+ancrerPageConnexionDansHistorique();
+
+window.addEventListener("pagehide", viderChampMotDePasse);
+window.addEventListener("pageshow", viderChampMotDePasse);
+window.addEventListener("popstate", () => {
+    viderChampMotDePasse();
+    window.history.pushState(
+        { page: ETAT_HISTORIQUE_CONNEXION, position: "garde" },
+        "",
+        window.location.href
+    );
+});
 
 async function obtenirJetonCsrf() {
     if (jetonCsrf) return jetonCsrf;
 
-    const reponse = await fetch("/csrf-token", {
-        cache: "no-store"
-    });
+    if (!promesseJetonCsrf) {
+        promesseJetonCsrf = (async () => {
+            const reponse = await fetch("/csrf-token", {
+                cache: "no-store"
+            });
 
-    if (!reponse.ok) {
-        throw new Error("Impossible d'obtenir le jeton de sécurité.");
+            if (!reponse.ok) {
+                throw new Error("Impossible d'obtenir le jeton de sécurité.");
+            }
+
+            const resultat = await reponse.json();
+            jetonCsrf = resultat.csrfToken;
+            return jetonCsrf;
+        })();
     }
 
-    const resultat = await reponse.json();
-    jetonCsrf = resultat.csrfToken;
-    return jetonCsrf;
+    try {
+        return await promesseJetonCsrf;
+    } finally {
+        promesseJetonCsrf = null;
+    }
 }
 
 boutonsToggle.forEach((bouton) => {
@@ -38,11 +94,15 @@ if (messageInitial) {
     messageConnexion.textContent = messageInitial;
 }
 
+obtenirJetonCsrf().catch(() => {
+    messageConnexion.textContent = "Le service de sécurité sera sollicité de nouveau lors de la connexion.";
+});
+
 formulaireConnexion.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const identifiant = document.getElementById("identifiant").value;
-    const motdepasse = document.getElementById("motdepasse").value;
+    const motdepasse = champMotDePasse.value;
 
     try {
         const csrfToken = await obtenirJetonCsrf();
@@ -63,6 +123,7 @@ formulaireConnexion.addEventListener("submit", async (event) => {
         messageConnexion.textContent = resultat.message || "Connexion en cours...";
 
         if (reponse.ok) {
+            viderChampMotDePasse();
             window.location.href = "/";
         }
     } catch (erreur) {

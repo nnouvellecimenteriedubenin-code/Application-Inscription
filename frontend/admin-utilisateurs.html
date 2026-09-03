@@ -9,7 +9,16 @@
 <body>
     <h1>Gestion des utilisateurs</h1>
 
-    <p class="admin-link"><a href="/">Retour à l'application</a></p>
+    <nav class="navigation-app" aria-label="Navigation principale">
+        <div class="navigation-liens">
+            <a href="/">Formulaire d'inscription</a>
+            <a href="/#listeInscriptions">Liste des inscriptions</a>
+            <a href="/admin-utilisateurs" aria-current="page">Gestion des utilisateurs</a>
+        </div>
+        <div class="navigation-compte">
+            <button id="boutonDeconnexion" class="bouton-deconnexion" type="button">Déconnexion</button>
+        </div>
+    </nav>
 
     <div class="filtres-admin">
         <label for="filtreStatut">Filtrer par statut</label>
@@ -17,8 +26,6 @@
             <option value="tous">Tous</option>
             <option value="en_attente">En attente</option>
             <option value="actif">Actifs</option>
-            <option value="refusé">Refusés</option>
-            <option value="désactivé">Désactivés</option>
         </select>
     </div>
 

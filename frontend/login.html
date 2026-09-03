@@ -148,13 +148,13 @@
         <h1 class="titre">Connexion</h1>
         <p class="soustitre">Accédez à l’espace d’administration</p>
 
-        <form id="formulaireConnexion">
+        <form id="formulaireConnexion" autocomplete="off">
             <label for="identifiant">Identifiant</label>
             <input type="text" id="identifiant" name="identifiant" placeholder="Entrer votre identifiant">
 
             <label for="motdepasse">Mot de passe</label>
             <div class="champ-mot-de-passe">
-                <input type="password" id="motdepasse" name="motdepasse" placeholder="Entrer votre mot de passe">
+                <input type="password" id="motdepasse" name="motdepasse" placeholder="Entrer votre mot de passe" autocomplete="off">
                 <button type="button" class="toggle-mot-de-passe" data-cible="motdepasse" aria-label="Afficher le mot de passe">👁</button>
             </div>
 

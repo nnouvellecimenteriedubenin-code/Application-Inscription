@@ -9,6 +9,26 @@ h1 {
     color: #1f4e79;
 }
 
+.entete-principal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    text-align: center;
+}
+
+.entete-principal h1 {
+    margin-bottom: 6px;
+}
+
+.entete-principal > a {
+    color: #1f4e79;
+    font-weight: bold;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+
 h2 {
     color: #1f4e79;
     margin-top: 40px;
@@ -16,10 +36,28 @@ h2 {
 
 .navigation-app {
     display: flex;
-    justify-content: center;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    max-width: 1100px;
+    margin: 0 auto 20px;
+    padding: 12px 16px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.navigation-liens {
+    display: flex;
+    align-items: center;
     gap: 16px;
     flex-wrap: wrap;
-    margin-bottom: 20px;
+}
+
+.navigation-compte {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
 }
 
 .navigation-app a {
@@ -32,9 +70,41 @@ h2 {
     text-decoration: underline;
 }
 
+.navigation-app a[aria-current="page"] {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+
+.bouton-deconnexion {
+    padding: 8px 14px;
+    background-color: #5f2930;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.bouton-deconnexion:hover {
+    background-color: #461d23;
+}
+
+@media (max-width: 700px) {
+    .navigation-app {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .navigation-liens {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .navigation-compte {
+        margin-left: 0;
+    }
+}
+
 .message-session {
     max-width: 700px;
-    margin: 0 auto 20px;
+    margin: 6px auto 20px;
     padding: 14px 18px;
     border-radius: 8px;
     background-color: #fff4e5;
@@ -101,6 +171,41 @@ button {
 
 button:hover {
     background-color: #163b5c;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+button:disabled:hover {
+    background-color: #1f4e79;
+}
+
+.selecteur-tableau {
+    width: auto;
+    min-width: 145px;
+    margin: 0;
+}
+
+.boutons-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+
+.boutons-actions button {
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+.bouton-danger {
+    background-color: #a61b1b;
+}
+
+.bouton-danger:hover {
+    background-color: #7f1515;
 }
 
 table {
